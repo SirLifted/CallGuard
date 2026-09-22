@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.dart_tool/
+.build/
+
+# Mobile build outputs
+*.apk
+*.aab
+*.ipa
+*.app
+build/
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/build/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.iml
+
+# Secrets / env
+.env
+.env.*
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+
+# Recordings / local media (never commit real user data)
+*.mp4
+*.mov
+*.webm
+recordings/
