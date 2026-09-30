@@ -36,31 +36,19 @@ The project should follow these principles from the beginning:
 
 # 2. Overall Development Lifecycle
 
-The project should move through these phases:
+The project moves through PHASE 1 – PHASE 37 as defined below (single source of truth).
 
-1. Product validation
-2. Requirements finalization
-3. Technical architecture
-4. UX/UI design
-5. Design system
-6. Backend foundation
-7. Real-time calling infrastructure
-8. Android/iOS application foundation
-9. Authentication and user management
-10. Core video calling
-11. Recording-consent engine
-12. Recording system
-13. Recording history and storage
-14. Privacy/security implementation
-15. Notifications
-16. Error handling and edge cases
-17. Testing
-18. Beta release
-19. App-store preparation
-20. Production launch
-21. Post-launch monitoring
-22. Maintenance and improvements
-23. Future integrations and advanced features
+Summary groups:
+
+- Foundation: PHASE 1–7 (validation, requirements, architecture, UX/UI, design system, environments, backend foundation)
+- Calling: PHASE 8–10 (realtime infrastructure, app foundation, core call experience)
+- Privacy core: PHASE 11–16 (consent engine, recording, extension, withdrawal, history/storage, retention/deletion)
+- Trust: PHASE 17–21 (notifications, hardening, audit, abuse prevention, edge cases)
+- Quality: PHASE 22–26 (accessibility, performance with SLOs, QA, cross-platform, security testing)
+- Release: PHASE 27–33 (beta, readiness, store prep, RC, launch, monitoring, maintenance)
+- Post-MVP: PHASE 34–37 (V2, AI, third-party integrations, enterprise)
+
+Do not use any other phase list. If this summary and a PHASE heading disagree, the PHASE heading wins.
 
 ---
 
@@ -78,9 +66,10 @@ Confirm that the product concept is technically and commercially worth building 
 - Interview potential users.
 - Identify personal and professional use cases.
 - Identify competing products.
-- Research recording and consent requirements in target markets.
+- Research recording and consent requirements in target markets. Default to all-party consent; produce per-market matrix.
 - Investigate technical restrictions on Android and iOS.
-- Investigate official third-party platform integration possibilities.
+- Store-compliance gate: validate CallKit/PushKit (iOS) and Telecom ConnectionService + foreground-service types (Android) plus Play Data Safety / App Privacy disclosure acceptance for a recording app.
+- Legal gate: counsel sign-off on consent model, retention vs audit split, data residency, Privacy Policy/ToS/DPA scope.
 
 ## Key decision
 
@@ -389,21 +378,22 @@ Build the core server infrastructure.
 
 ### Authentication
 
-- Registration
-- Login
-- Logout
-- Session management
-- Password/credential recovery
-- Device/session management
-- Optional 2FA/passkeys
+Fixed decision for MVP:
+
+- Primary: phone-number OTP (Firebase Auth or Cognito or equivalent). Email + password is not the MVP path.
+- OTP: 6-digit, 5 attempts max, 5 requests per 10 minutes per number, 5-minute code expiry.
+- Sessions: short access token + rotating refresh token, server-side revocation, device binding, logout all devices supported.
+- Recovery: OTP re-verification only. No security questions.
+- Optional post-MVP: 2FA/passkeys.
 
 ### User service
 
 - Profiles
-- User IDs
+- User IDs (stable UUID, never phone number as primary key)
 - Preferences
-- Blocking
+- Blocking (block suppresses calls, recording requests, and notifications both ways)
 - Account status
+- User discovery privacy: hashed phone lookup, rate-limited search, no existence oracle (uniform responses), optional mutual-contact-only mode.
 
 ### Database
 
@@ -453,7 +443,11 @@ Create reliable one-to-one video calls.
 
 ## Technology
 
-A WebRTC-based architecture is a strong candidate, but the final implementation should be selected during technical architecture.
+Fixed decision for MVP: WebRTC via SFU with server-side recording (recommended: LiveKit; alternatives: Chime SDK, Twilio, Daily).
+
+- P2P mesh is rejected for MVP because the server cannot authoritatively stop a peer-to-peer recording.
+- SFU is authoritative for recording: it validates `recording_auth_jwt` before starting and stops muxing on withdrawal/expiry.
+- Clients never record locally with `MediaRecorder`. They only send requests; the server/SFU records.
 
 ## Test
 
@@ -587,6 +581,12 @@ The client application must not be able to bypass the consent state.
 
 The backend must verify the authorization before recording starts.
 
+Enforcement design (MVP):
+
+- On approval, server issues short-lived `recording_auth_jwt {call_id, request_id, participants, scope(audio/video), quality, duration, exp}` (e.g. 5-minute TTL, renewed only on approved extension).
+- SFU validates JWT on `StartRecording`. No valid JWT = no recording. Expired/revoked JWT = immediate stop.
+- Scope limitation: this guarantee covers in-app/server recording only. OS-level screen capture, external cameras, or rooted devices cannot be technically prevented. See PHASE 12 for deterrence.
+
 ---
 
 # PHASE 12 — RECORDING SYSTEM
@@ -619,6 +619,16 @@ CONSENT_WITHDRAWN
 FAILED
 CANCELLED
 ```
+
+## Enforcement and capture deterrence
+
+- Authoritative stop: SFU stops muxing within 2 seconds of `CONSENT_WITHDRAWN` / `EXPIRED` / JWT revocation.
+- No local recording path: clients have no supported offline-record button.
+- OS-capture deterrence (best effort, not prevention):
+  - Android: `FLAG_SECURE` on call/recording screens.
+  - iOS: `UIScreen.isCaptured` monitoring; on detection emit `capture_detected` audit event and notify both peers.
+  - Visible watermark overlay with `user_id + timestamp` on video and recording indicator.
+- Failed/invalid authorization attempts are audit-logged.
 
 ---
 
@@ -674,7 +684,9 @@ Both users notified
 
 ## Acceptance criterion
 
-Once valid withdrawal is confirmed, the recording must not continue beyond the allowed system-controlled termination window.
+Once valid withdrawal is confirmed, the server/SFU must stop the in-app recording within 2 seconds (system-controlled termination window) and revoke the `recording_auth_jwt`.
+
+Explicit scope: this does not and cannot prevent OS-level screen recording or external capture. Those cases are handled by deterrence (FLAG_SECURE, capture detection, watermark) plus audit and legal notice, not by technical prevention.
 
 ---
 
@@ -720,9 +732,9 @@ Retention options:
 ## Requirements
 
 - Display deletion date.
-- Automatically delete expired recordings.
-- Remove associated access paths.
-- Maintain appropriate non-content audit metadata where required.
+- Automatically delete expired recordings (media bytes + derived artifacts like thumbnails).
+- Immediately revoke signed URLs and access paths on delete/expiry.
+- Maintain appropriate non-content audit metadata where required (see PHASE 19: metadata retained per audit policy, e.g. 12 months, then deleted; never retain media to satisfy audit).
 
 ---
 
@@ -761,10 +773,13 @@ Use the same terminology and visual language on both platforms.
 
 ### Data security
 
-- Encryption in transit
-- Encryption at rest
-- Secure key management
-- Access control
+Fixed decision for MVP: no end-to-end encryption. Server is the trusted recorder.
+
+- Encryption in transit: TLS 1.2+ for API/signaling, DTLS-SRTP for media.
+- Encryption at rest: S3-compatible storage with SSE-KMS, per-recording data key (DEK), KMS holds KEK, key rotation.
+- Secure key management via cloud KMS only. No keys in app binaries.
+- Access control: signed, expiring URLs tied to `recording_auth` check on every playback/download.
+- E2EE is an explicit V2 non-goal because it conflicts with server-enforced recording.
 
 ### API security
 
@@ -787,6 +802,10 @@ Use the same terminology and visual language on both platforms.
 # PHASE 19 — AUDIT SYSTEM
 
 ## Implement tamper-resistant audit records.
+
+- Append-only store (e.g. WORM table or hash-chained log). No update/delete API. Previous-hash column verified by background job.
+- Content vs metadata split: audit stores non-content metadata only (`recording_id, call_id, actor_id hash, event, timestamp, policy_id, content_sha256`). Never store purpose free-text verbatim if sensitive, never store media bytes.
+- On content expiry/deletion, audit metadata is retained per audit policy (e.g. 12 months), then deleted per same policy.
 
 Track:
 
@@ -870,6 +889,15 @@ rather than simply showing a red dot.
 ---
 
 # PHASE 23 — PERFORMANCE OPTIMIZATION
+
+## SLO targets (MVP must meet these before RC)
+
+- Call setup p95: <3s Wi-Fi, <5s 4G
+- Crash-free sessions: >99.5%
+- Push delivery p95: <5s (foreground/background killed states measured separately)
+- Recording start success: >99% with valid JWT
+- API p95: <300ms (auth, consent endpoints)
+- SFU-to-storage upload: recording available in history p95 <60s after stop
 
 Measure:
 
@@ -1067,7 +1095,8 @@ Prepare:
 - Screenshots
 - Store description
 - Privacy policy
-- Data-safety information
+- Data-safety information (declare camera, mic, recordings, storage)
+- Telecom ConnectionService integration, `FOREGROUND_SERVICE_CAMERA|MICROPHONE` + `FOREGROUND_SERVICE_PHONE_CALL` where used
 - Content rating
 - Release signing
 - Production build
@@ -1082,12 +1111,15 @@ Prepare:
 - Screenshots
 - Store description
 - Privacy policy
-- App privacy information
+- App privacy information (declare recording/data use)
+- CallKit + PushKit for incoming calls, `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`, privacy manifest
 - Age rating
 - Production certificates/signing
 - App Store metadata
 
 The store information must accurately describe the app's data collection and recording functionality.
+
+Store feasibility is a Phase 1 gate, not a Phase 29 surprise: validate background-call, CallKit/ConnectionService, and recording-disclosure acceptance before building recording.
 
 ---
 
@@ -1230,10 +1262,14 @@ AI processing should require the appropriate user authorization.
 
 Investigate integrations only after the independent calling product is stable.
 
-Potential targets:
+Explicit non-goals for all versions unless an official API proves otherwise:
 
-- WhatsApp
-- Facebook/Messenger
+- WhatsApp call interception/recording
+- Facebook/Messenger call interception/recording
+
+These platforms provide no official call-recording API and their ToS plus Android/iOS restrictions prohibit interception. Do not roadmap them as features.
+
+Potential targets only where official APIs exist:
 - Zoom
 - Microsoft Teams
 - Google Meet
