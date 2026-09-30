@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info: { title: CallGuard API, version: 1.0.0 }
+paths:
+  /auth/otp/request: { post: { summary: Request OTP (5/10min rate-limit) } }
+  /auth/otp/verify: { post: { summary: Verify OTP, returns access+refresh } }
+  /auth/refresh: { post: { summary: Rotate refresh } }
+  /auth/logout: { post: { summary: Revoke current refresh } }
+  /auth/logout-all: { post: { summary: Revoke all devices } }
+  /users/me: { get: { summary: Get profile }, patch: { summary: Update profile } }
+  /users/search: { get: { summary: Rate-limited search, uniform 404, no enumeration } }
+  /blocks: { post: { summary: Block }, delete: { summary: Unblock } }
+  /calls: { post: { summary: Create call + LiveKit room } }
+  /calls/{id}/accept: { post: { summary: Accept } }
+  /calls/{id}/decline: { post: { summary: Decline } }
+  /calls/{id}/leave: { post: { summary: Leave } }
+  /calls/{id}/recording-requests: { post: { summary: Request recording } }
+  /recording-requests/{id}/approve: { post: { summary: Approve, issues recording_auth_jwt } }
+  /recording-requests/{id}/decline: { post: { summary: Decline } }
+  /recordings/{id}/withdraw: { post: { summary: Withdraw consent, revokes JWT, stops SFU <=2s } }
+  /recordings/{id}/extension-requests: { post: { summary: Request extension } }
+  /extension-requests/{id}/approve: { post: { summary: Approve extension, re-issues JWT } }
+  /extension-requests/{id}/decline: { post: { summary: Decline extension } }
+  /recordings: { get: { summary: List history } }
+  /recordings/{id}: { get: { summary: Details }, delete: { summary: Delete content immediately } }
+  /recordings/{id}/playback-url: { get: { summary: 5-min signed URL after authz + audit } }
+components:
+  schemas:
+    RecordingAuthJwt:
+      type: object
+      required: [call_id, request_id, participants, scope, quality, duration_sec, exp, jti]
