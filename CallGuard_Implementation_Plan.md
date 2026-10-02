@@ -1,142 +1,107 @@
-# CallGuard — Detailed Implementation Plan (Phased)
+# CallGuard — Implementation Plan v2 (cheap-first, plain language)
 
-**Source of truth companion to:** `CallGuard_Android_iOS_Development_Roadmap.md`
-**Status:** Planning — no runnable app yet
-**Fixed MVP decisions (do not revisit without ADR):**
-- Cross-platform: Flutter (single codebase, one product two platforms)
-- Calls: WebRTC via SFU, server-side recording authoritative (LiveKit recommended; alt: Chime SDK / Twilio / Daily). P2P rejected.
-- Auth: phone-number OTP primary (Firebase Auth or Cognito). No email/password MVP.
-- Consent: backend-issued short-lived `recording_auth_jwt`, SFU-validated. Clients never record locally.
-- Encryption: TLS + DTLS-SRTP in transit, SSE-KMS per-recording DEK at rest. No E2EE in MVP (server is trusted recorder).
-- Guarantee scope: in-app/server recording only. OS capture = deterrence (FLAG_SECURE, isCaptured, watermark) + audit, not prevention.
-- SLOs: setup p95 3s Wi-Fi / 5s 4G, crash-free >99.5%, push p95 <5s, recording success >99%, API p95 <300ms, history available p95 <60s.
-- WhatsApp/Messenger interception: explicit non-goal.
+**Same file, new version.** v1 was correct but used expensive tools. v2 does the same job for almost $0.
+**Companion to:** `CallGuard_Android_iOS_Development_Roadmap.md`
+**Status:** Planning — no runnable app yet.
 
----
+## Plain-language glossary (read this first)
 
-## STAGE T0 — Product Technical Design System
+- **App (Flutter):** one code base builds both Android and iOS apps. Free.
+- **Backend / API:** small server that checks who you are and who allowed recording. Think of it as the referee.
+- **Database (Postgres):** tables that store users, calls, consents. We use Supabase free tier to host it.
+- **SFU / LiveKit:** video relay room. Your video goes to this relay, the relay sends it to the other person and saves a copy only if allowed. Self-hosted = we run it on a cheap $5 server instead of paying per minute to Twilio.
+- **JWT (recording ticket):** short-lived permission slip, e.g. 5 minutes. No valid ticket = no recording. Checked by the relay.
+- **Egress:** moving video out of the relay to storage. Paid services charge per minute for this. Self-hosting + R2 avoids it.
+- **Storage (R2):** hard drive in the cloud for saved videos. Cloudflare R2 is used because downloads cost $0 (S3 charges for downloads).
+- **Push (FCM/APNs):** free popups for incoming calls. Apple CallKit + Android ConnectionService make them look like real phone calls.
+- **Audit log:** tamper-proof notebook of who allowed what, without storing video itself.
 
-**Goal:** developers can reproduce identical UI on Android/iOS from tokens, no hard-coding.
-**Inputs:** roadmap PHASE 4-5. **Output:** `design/` + tokens file.
+## What changed from v1 and why (cost savers)
 
-### T0.1 Tokens (versioned JSON)
-- Colors: `primary, secondary, background, surface, textPrimary, textSecondary, error, warning, success, recordingAlert` with light/dark values + contrast ratios.
-- Typography: font family (1 family + fallback), scale H1-H3 / body / button / caption, line-height, weight. Min body 14sp, dynamic-type support.
-- Spacing/radius/elevation: 4pt grid, radius sm/md/lg, elevation levels.
-- Motion: durations 150/250ms, easing standard.
-- Deliverable: `design/tokens.json` + generated Flutter `AppTokens` class. CI check fails on raw hex outside tokens.
+| v1 (works but pricey) | v2 cheap replacement | Saving | Quality kept how |
+|---|---|---|---|
+| Phone SMS OTP first (Firebase/Cognito) | Email magic-link OTP first via Supabase Auth (free 50k users). Add phone SMS later only if needed | Saves ~$0.02 per SMS, ~$50–200 in testing | Same session + device binding, rate limits, OTP expiry. Phone can be added without DB change (`phone_hash` nullable) |
+| AWS S3 + AWS KMS | Cloudflare R2 (10GB free, $0 download fees) + Supabase Vault free + SOPS/age for secrets | Saves egress (~$0.09/GB on S3) + $1/key/mo KMS | Same: per-video secret key, signed 5-min links, rotation |
+| Managed Redis + separate backend host | Upstash Redis free tier (or same $5 server) + Supabase Edge Functions free + 1 cheap server for all | Saves $15–30/mo | Same revocation list, rate limits |
+| LiveKit Cloud / Twilio / Chime per-minute | LiveKit self-hosted on 1 Hetzner VPS (~$5.50/mo, e.g. CX22). Use LiveKit Cloud free tier only for dev | Saves per-minute fees that explode with testing | Same 2-second stop enforcement, same JWT check |
+| Datadog / paid monitoring, Figma paid | Sentry free (5k errors/mo) + Grafana Cloud free + Uptime Kuma free on same server. Penpot free (or Figma free tier) for design | Saves $20+/mo | Same SLO alerts, crash reports |
+| Separate dev/staging/prod clouds | 1 server + free tiers: dev on laptop + Supabase free, staging on same $5 server (second LiveKit room), prod on same server to start, split only when full | Saves $50+/mo early | Same dev→staging→prod flow, just smaller machines |
 
-### T0.2 Components (single spec, Flutter implements once)
-Buttons (primary/secondary/destructive/ghost), text fields + OTP input, cards, bottom sheets, dialogs (recording request/approve/withdraw/extend/delete), toggles, tabs, nav bar, call controls, recording indicator (`🔴 RECORDING + timer`, never color-only), toasts, in-app notification banner, empty/error/offline states.
-- Each component: anatomy, states (default/pressed/disabled/loading), a11y label, min touch target 48dp.
-- Deliverable: Figma + `design/components.md` + Flutter widgetbook/storybook.
+**Expected bill:** $0 during build (laptop + free tiers). ~$5–10/mo for closed beta (1 Hetzner + R2 free + Supabase free + Cloudflare free). Split/upgrade only after 100–500 beta users.
 
-### T0.3 Screens (30 screens from roadmap §4)
-Splash, onboarding, registration (phone), OTP, login, home, search/contacts, profile, incoming/outgoing/active call, recording request/approval/active/extension/ending/ended, history/details/delete-confirm, privacy/notification/security/blocked/report/account/help, error/offline.
-- Each screen: layout, every button/action, validation, error copy, permission trigger point.
-- Acceptance: side-by-side Android/iOS screenshot diff = identical except OS chrome.
+## Fixed decisions v2 (do not change without ADR)
 
-**Exit criteria:** tokens frozen v1, component checklist signed, Figma prototype clickable for MVP journey.
-
----
-
-## STAGE T1 — Architecture Design (must freeze before code)
-
-### T1.1 Mobile architecture
-- Flutter stable, Dart. State: Riverpod/Bloc (pick one, document). Nav: go_router with auth guard + call overlay route.
-- Layers: `presentation / application (use-cases) / domain / data (repos + DTOs) / core (tokens, logging, config)`.
-- Native bridges: CallKit + PushKit (iOS), Telecom ConnectionService + FCM high-priority (Android), camera/mic permission handlers, `FLAG_SECURE` (Android), `isCaptured` listener (iOS).
-- Repo layout: `apps/mobile/lib/...`, `packages/tokens/`, `packages/api_client/`.
-
-### T1.2 Backend architecture
-- API: NestJS (Node) or equivalent, REST for CRUD + WebSocket for signaling (LiveKit handles media). Postgres (primary), Redis (presence, rate-limit, JWT revocation), S3-compatible (recordings), KMS (keys).
-- Services: auth, users, calls, consent/recording-controller, notifications, storage, audit (append-only), admin/monitoring.
-- Environments: dev → staging → prod, IaC (Terraform), secrets in manager (never in repo), CI/CD (lint + test + build + migrate).
-
-### T1.3 Data model (migrations v1)
-- `users(id UUID, phone_hash, display_name, avatar_url, status, created_at)`
-- `devices(id, user_id, platform, push_token, last_seen)`
-- `blocks(blocker_id, blocked_id, created_at)`
-- `calls(id, created_by, status, started_at, ended_at)`
-- `call_participants(call_id, user_id, joined_at, left_at)`
-- `recording_requests(id, call_id, requester_id, participant_id, purpose, duration_sec, quality, scope_audio, scope_video, status, expires_at)`
-- `consents(id, request_id, decider_id, decision, decided_at)`
-- `recordings(id, call_id, request_id, sfu_room, s3_key, dek_id, quality, duration_sec, status[REQUESTED|APPROVED|STARTED|STOPPED|EXPIRED|CONSENT_WITHDRAWN|FAILED|CANCELLED], content_sha256, delete_at)`
-- `audit_events(id, recording_id, call_id, actor_hash, event, timestamp, prev_hash, hash)` — no UPDATE/DELETE grants.
-- `notifications(id, user_id, type, payload, status, created_at)`
-- Indexes on `calls(created_by)`, `recordings(delete_at,status)`, `audit_events(recording_id,timestamp)`.
-
-### T1.4 API + JWT contracts
-- Auth: `POST /auth/otp/request|verify|refresh|logout|logout-all`
-- Users: `GET/PATCH /users/me`, `GET /users/search?q=` (rate-limited, uniform 404), `POST/DELETE /blocks`
-- Calls: `POST /calls`, `POST /calls/:id/accept|decline|leave`
-- Consent: `POST /calls/:id/recording-requests`, `POST /recording-requests/:id/approve|decline`, `POST /recordings/:id/withdraw`, `POST /recordings/:id/extension-requests`, `POST /extension-requests/:id/approve|decline`
-- Recordings: `GET /recordings`, `GET /recordings/:id`, `GET /recordings/:id/playback-url` (5-min signed URL after authz), `DELETE /recordings/:id`
-- `recording_auth_jwt = {call_id, request_id, participants[], scope, quality, duration, exp(5min), jti}`. SFU webhook `onStartRecording` must present valid non-revoked JWT. Revocation list in Redis on withdraw/expiry.
-
-### T1.5 Realtime + recording + notifications
-- LiveKit room per call (`call_<uuid>`), SFU egress to S3 on valid JWT only. Stop egress within 2s of withdraw/expiry webhook. Timer enforced server-side, not client countdown.
-- Push: FCM (Android, high-priority + full-screen intent) + APNs PushKit (iOS CallKit). Fallback in-app socket event. Types: incoming-call, recording-request/approved/declined/started/ending/ended, extension-request, consent-withdrawn.
-- Storage: `s3://callguard-recordings/<env>/<recording_id>.mp4` + `.json` metadata. Lifecycle rule deletes on `delete_at`. Signed URLs 5min, authz-checked per request, every access audit-logged.
-
-### T1.6 Security + privacy + observability
-- Rate limits: OTP 5/10min, search 30/min, recording-request 10/call + 20/day per pair, playback-url 60/min.
-- Abuse: block/report workflow, spam detection, admin review queue.
-- Logging: structured JSON, PII redaction, audit separate from app logs. Metrics: SLO dashboards + alerts (setup time, crash rate, recording success, consent errors, unauthorized attempts). Tracing on consent endpoints.
-
-**Exit criteria:** ADRs signed for Flutter/LiveKit/Postgres, ERD + OpenAPI + JWT claims merged, IaC plan approved, store-gate validated.
+- App: Flutter free, Riverpod, go_router. One UI for both phones.
+- Calls: LiveKit self-hosted. P2P rejected (server could not force stop).
+- Auth v2: email OTP first. Phone SMS is Phase G add-on.
+- Recording: server ticket (JWT 5 min), relay checks it, stops within 2 seconds of withdraw/expiry.
+- Encryption: TLS + DTLS-SRTP in transit, R2 with per-video key at rest. No E2EE in MVP (server must be able to stop/save).
+- Scope honesty: in-app recording is enforced. Phone screen-record or second camera cannot be blocked, only discouraged (secure flag, capture notice, watermark with user ID + time) + logged.
+- Targets: call setup <3s Wi-Fi / <5s 4G, crash-free >99.5%, push <5s, recording success >99%, API <300ms, video in history <60s after stop.
+- Never build WhatsApp/Messenger spying. Explicit non-goal.
 
 ---
 
-## STAGE B — Backend Foundation (roadmap PHASE 7)
-1. Auth OTP + sessions + device binding + tests.
-2. Users/blocks/search with anti-enumeration + tests.
-3. Migrations + seed + CI pipeline.
-- Acceptance: register → OTP → search → block flows via API tests; no existence oracle.
+## T0 — Look and feel (design system)
 
-## STAGE C — Calling (PHASE 8-10)
-1. Signaling + LiveKit rooms + CallKit/ConnectionService integration.
-2. Flutter call UI (outgoing/incoming/active) + camera/mic/speaker/switch/mute.
-3. Network adaptation, reconnect, background/foreground handling.
-- Acceptance: 2 test accounts stable on Android↔Android, iOS↔iOS, cross-platform on Wi-Fi/4G/weak/switch.
+**Goal in one sentence:** both phones look identical without guessing colors.
+**Cheap tool:** Penpot free (or Figma free tier) + `design/tokens.json` already in repo.
+- T0.1 Tokens: 10 colors, 1 font family, sizes H1/H2/H3/body/button/caption, 4pt spacing, round corners 8/12/16, fast 150ms motion. One file generates `packages/tokens/app_tokens.dart`. CI fails if anyone hard-codes a color.
+- T0.2 Parts: buttons, OTP box, cards, popups for request/approve/withdraw/extend/delete, call buttons, red `RECORDING + timer` label (never color alone), toasts, empty/error/offline pages. Each part lists looks + disabled/loading states + screen-reader name + 48dp finger size.
+- T0.3 Screens (30 from roadmap): splash, onboarding, email register, OTP code, home, search, profile, incoming/outgoing/active call, 6 recording screens, history/details/delete-confirm, settings pages, error/offline.
+- **Done when:** tokens v1 frozen, clickable demo of register → call → request → approve → record → withdraw → history works in design tool.
 
-## STAGE D — Privacy Core (PHASE 11-14)
-1. Request → approve/decline → JWT issuance.
-2. SFU start/stop + timer + quality/duration enforcement + indicator.
-3. Extension (re-consent only) + withdrawal (2s stop + revoke + notify + audit).
-- Acceptance: no-JWT start rejected; expired JWT stops; double-request/simultaneous-request handled; withdrawal stops ≤2s (server clock).
+## T1 — Blueprint before code (architecture)
 
-## STAGE E — Recording Management (PHASE 15-16,19)
-1. S3 upload + metadata + history/details + playback-url authz.
-2. Retention scheduler (24h/7d/30d/90d/custom/manual), URL revocation, audit retention (12mo example).
-3. Append-only audit + hash-chain verifier job.
-- Acceptance: expired content unreachable (403 on old URL), audit survives content delete, hash-chain passes.
+**Goal:** freeze choices so coding does not stop for debates.
+**Cheap tools:** Supabase free (Postgres + Auth + Vault), Upstash free, R2 free, 1 Hetzner, Terraform free, GitHub Actions free.
+- T1.1 App layout: `apps/mobile/lib` in layers (screens / logic / data). Bridges: CallKit+PushKit on iPhone, ConnectionService+FCM on Android, secure-flag + capture notice. Files already started: `design/`, `packages/tokens/`, `packages/api_client/` (to add).
+- T1.2 Backend layout: Supabase Postgres (tables) + Edge Functions (referee logic: auth, calls, consent, storage links, audit) + Upstash (blocklist, ticket revocation). LiveKit on Hetzner. Dev on laptop, staging + prod as separate rooms/buckets on same box at first.
+- T1.3 Tables v1: see `services/api/migrations/001_init.sql` (users, devices, blocks, calls, participants, recording_requests, consents, recordings, audit_events append-only with hash chain, notifications). Change for v2: `users.phone_hash` is now nullable (email first), add `users.email_hash UNIQUE`.
+- T1.4 API + ticket: see `services/api/openapi.yaml`. Auth is now `email OTP request/verify/refresh/logout`. Ticket = `{call_id, request_id, who, audio/video, quality, minutes, expires, id}`. Relay refuses start without fresh ticket, stops on revoked ticket.
+- T1.5 Video + storage + push: one LiveKit room per call `call_<id>`. Save to R2 only with ticket: `r2://callguard/<env>/<recording_id>.mp4` + `.json`. Auto-delete on `delete_at`. Play link lives 5 minutes, checks permission each time, every view logged. Push free via FCM/APNs + in-app fallback.
+- T1.6 Safety + watch: limits (OTP 5/10min, search 30/min, request 10/call, link 60/min), block/report queue, JSON logs with phone/email hidden, free dashboards for the targets above, ticket endpoints traced.
+- **Done when:** ADRs signed (`docs/ADR-001-stack.md` updated to v2), table + API files merged, server cost sheet approved, store gate checked (CallKit/ConnectionService + recording disclosure accepted).
 
-## STAGE F — Trust: Notifications, Hardening, Abuse, Edge Cases (PHASE 17-18,20-21)
-- Push + in-app parity, auth hardening, KMS rotation, API authz tests, block/rate-limit/abuse queue.
-- Edge matrix: disconnect, network loss, crash, restart, leave, background, SFU/storage/notify failure, expired/duplicate/simultaneous/invalid-auth/unsupported-quality — backend authoritative in each.
-- Acceptance: malicious client cannot start/access without JWT (pen-test gate).
+## B — Backend basics
 
-## STAGE Q — Quality (PHASE 22-26)
-- Unit (consent machine, durations, retention), integration (auth→call→consent→record→store→notify), e2e script from roadmap §39.
-- Cross-platform screenshot + behavior diff, a11y (screen reader, contrast, 48dp, non-color status), SLO load test.
-- Security test: bypass, token replay, URL sharing, storage direct-access, spam.
-- Acceptance: SLOs met, zero critical/high vulns open.
+Build email OTP login, profiles, hashed search with no hints to strangers (same answer whether user exists or not), block (block stops calls + requests + popups both ways), tables + free CI. **Done when:** register → OTP → search → block passes on API tests.
 
-## STAGE R — Release (PHASE 27-33)
-1. Closed beta (100-500 users), triage order: privacy > security > call reliability > recording reliability > usability.
-2. Readiness: prod env, backups verified, runbooks, Privacy Policy/ToS/deletion process, incident response.
-3. Store prep + RC (regression + store + privacy review) → staged rollout Android then iOS → monitor crash/call/record/consent/server dashboards.
-- Acceptance: RC has only low-risk opens; rollback plan tested.
+## C — Calling
 
-## STAGE G — Growth (PHASE 34-37, post-MVP only)
-Group calls + group consent, screen-share consent, audio-only, secure sharing, watermark admin, orgs/RBAC/billing, AI transcription (with explicit opt-in + retention disclosure). No WhatsApp/Messenger interception.
+Signal + LiveKit room + full-screen call popup, Flutter call screen (mute, camera flip, speaker, hang up), reconnect on weak net/switch, background handling. **Done when:** 2 test accounts hold a stable call Android↔Android, iOS↔iOS, and cross on Wi-Fi/4G/weak/switch.
+
+## D — Privacy core (most important)
+
+Request (why + minutes + quality) → other side approves/declines → server hands 5-min ticket → relay records with red label + timer → extend needs new approval → withdraw kills ticket and stops save within 2 seconds + tells both + logs. **Done when:** no ticket = no save, expired ticket stops, double/simultaneous requests safe, withdraw ≤2s by server clock.
+
+## E — Saving + history + notebook
+
+Upload to R2 + details page + permission-checked play link, auto-delete choices 24h/7d/30d/90d/custom/manual (video + thumbnails gone, old links dead immediately), notebook keeps only metadata (ids, times, hash) ~12 months then gone, hash-chain checker job. **Done when:** expired video gives 403, notebook survives video delete, chain check green.
+
+## F — Trust (popups, hardening, abuse, edge cases)
+
+Same wording popups both phones, key rotation via Vault, permission tests, block + limits + review queue. Edge list each forced to server decision: drop, no net, crash, restart, leave, background, relay/storage/popup fail, expired/duplicate/double/invalid-ticket/bad-quality. **Done when:** hacked app without ticket cannot start or watch (pen-test gate).
+
+## Q — Quality
+
+Small tests (consent steps, minutes math, delete dates), chain tests (login→call→allow→save→store→popup), full walkthrough from roadmap §39, side-by-side phone screenshots, screen-reader/contrast/48dp/non-color checks, load test to SLOs, attack tests (replay ticket, share link, direct storage hit, spam). **Done when:** SLOs met, no critical/high security holes open.
+
+## R — Trial release
+
+100–500 testers, fix order: privacy > security > call drops > save fails > confusing UI. Checklist: backup restore tried, help + delete-account + incident steps written, Privacy Policy/ToS live, store forms honest about recording, release candidate has only tiny issues, rollback tried, Android first then iOS, watch crash/call/save/consent dashboards. **Done when:** RC clean, rollback works.
+
+## G — Later only (after stable)
+
+Group calls + group permission, screen-share permission, audio-only, safe sharing, company accounts/billing, AI text summaries only with clear opt-in (what/why/where/how long/who). Never WhatsApp/Messenger spying.
 
 ---
 
-## Build order + repo map
-`design/tokens.json` → `openapi.yaml` + migrations → `apps/mobile` + `services/api` + `infra/` → LiveKit → consent/recording → storage/audit → hardening → beta → launch.
-Proposed repo: `apps/mobile/`, `services/api/`, `packages/api_client/`, `packages/tokens/`, `infra/`, `design/`, `docs/` (this plan + ADRs + QA matrix).
+## Build order + folders
 
-## Definition of done (MVP)
-Roadmap §39 journey passes on all 4 device pairs, SLOs met, audit hash-chain green, store disclosures approved, deletion verified, no bypass.
+`design/tokens.json` → `openapi.yaml` + `001_init.sql` → `apps/mobile` + `services/api` (Edge Functions) + `infra/` → LiveKit on Hetzner → consent/ticket → R2/audit → hardening → trial → launch.
+Folders: `apps/mobile/`, `services/api/`, `packages/api_client/`, `packages/tokens/`, `infra/`, `design/`, `docs/`.
+
+## Done = MVP complete
+
+Roadmap §39 walkthrough passes on all 4 phone pairs, SLOs met, audit chain green, store forms approved, deleted videos stay deleted, no bypass.
