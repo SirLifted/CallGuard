@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/app_tokens.dart';
+import 'calls/call_service.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
@@ -55,11 +56,41 @@ class HomeStub extends StatelessWidget {
   }
 }
 
-class CallStub extends StatelessWidget {
+class CallStub extends ConsumerWidget {
   final String callId;
   const CallStub({super.key, required this.callId});
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: Text('Call $callId')), body: const Center(child: Text('LiveKit joins here in Stage C.')));
+  Widget build(BuildContext context, WidgetRef ref) {
+    final call = ref.watch(callServiceProvider);
+    final svc = ref.read(callServiceProvider.notifier);
+    return Scaffold(
+      appBar: AppBar(title: Text('Call $callId')),
+      body: Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Status: ${call.status.name}${call.note.isEmpty ? '' : ' — ${call.note}'}'),
+          const SizedBox(height: 12),
+          // TODO(Stage C env): join with real url+token from POST /calls, after mic/cam permission explainer.
+          ElevatedButton(
+            onPressed: call.status == CallStatus.inCall ? null : () => svc.join(url: 'wss://livekit.example', token: 'TODO'),
+            child: const Text('Join (needs server token)'),
+          ),
+          const SizedBox(height: 8),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            _tog('Mic', call.micOn, svc.toggleMic),
+            _tog('Cam', call.cameraOn, svc.toggleCamera),
+            _tog('Spk', call.speakerOn, svc.toggleSpeaker),
+          ]),
+          TextButton(onPressed: svc.switchCamera, child: const Text('Switch camera')),
+          TextButton(onPressed: () => svc.leave().then((_) => context.go('/')), child: const Text('Leave')),
+        ]),
+      ),
+    );
+  }
+
+  Widget _tog(String label, bool on, VoidCallback fn) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ElevatedButton(onPressed: fn, child: Text('$label ${on ? 'on' : 'off'}')),
+    );
   }
 }
