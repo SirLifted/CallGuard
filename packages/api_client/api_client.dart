@@ -43,6 +43,17 @@ class ApiClient {
     await http.post(Uri.parse('$baseUrl/extension-requests/$extensionId/approve'), headers: await _headers());
   }
 
+  Future<List<Map<String, dynamic>>> listRecordings() async {
+    // History page. Server only returns rows the viewer may see, newest first.
+    final r = await http.get(Uri.parse('$baseUrl/recordings'), headers: await _headers());
+    return (jsonDecode(r.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> deleteRecording(String recordingId) async {
+    // Shreds bytes now (Delete button + Delete-forever confirm). Log entry stays per policy.
+    await http.delete(Uri.parse('$baseUrl/recordings/$recordingId'), headers: await _headers());
+  }
+
   Future<String> playbackUrl(String recordingId) async {
     final r = await http.get(Uri.parse('$baseUrl/recordings/$recordingId/playback-url'), headers: await _headers());
     return (jsonDecode(r.body) as Map)['url'] as String; // 5-min link, logged server-side

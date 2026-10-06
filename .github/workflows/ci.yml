@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v1
-      - run: deno check services/api/functions/consent-ticket/index.ts services/api/functions/blocks/index.ts services/api/functions/user-search/index.ts services/api/functions/calls/index.ts services/api/functions/recording-withdraw/index.ts services/api/functions/recording-extension/index.ts
+      - run: deno check services/api/functions/consent-ticket/index.ts services/api/functions/blocks/index.ts services/api/functions/user-search/index.ts services/api/functions/calls/index.ts services/api/functions/recording-withdraw/index.ts services/api/functions/recording-extension/index.ts services/api/functions/playback-url/index.ts services/api/functions/retention-sweep/index.ts
 
   migrations:
     runs-on: ubuntu-latest
