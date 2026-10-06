@@ -16,6 +16,12 @@ class ApiClient {
     await http.post(Uri.parse('$baseUrl/auth/otp/request'), headers: await _headers(), body: jsonEncode({'email': email}));
   }
 
+  Future<void> requestRecording(String callId, {required String purpose, required int durationSec, String quality = '720p'}) async {
+    // Ask the other side. Server stores REQUESTED and pushes them to review.
+    await http.post(Uri.parse('$baseUrl/calls/$callId/recording-requests'),
+        headers: await _headers(), body: jsonEncode({'purpose': purpose, 'duration_sec': durationSec, 'quality': quality}));
+  }
+
   Future<void> approveRequest(String requestId) async {
     // Server returns the 5-min recording ticket (JWT). App never creates it.
     await http.post(Uri.parse('$baseUrl/recording-requests/$requestId/approve'), headers: await _headers());
@@ -24,6 +30,17 @@ class ApiClient {
   Future<void> withdraw(String recordingId) async {
     // Server revokes ticket + tells relay to stop within 2s.
     await http.post(Uri.parse('$baseUrl/recordings/$recordingId/withdraw'), headers: await _headers());
+  }
+
+  Future<void> requestExtension(String recordingId, int extraSec) async {
+    // Extra minutes need a fresh yes. Server pushes the participant to review.
+    await http.post(Uri.parse('$baseUrl/recordings/$recordingId/extension-requests'),
+        headers: await _headers(), body: jsonEncode({'extra_sec': extraSec}));
+  }
+
+  Future<void> approveExtension(String extensionId) async {
+    // Server revokes the old ticket and signs a fresh one. Decline keeps the old stop time.
+    await http.post(Uri.parse('$baseUrl/extension-requests/$extensionId/approve'), headers: await _headers());
   }
 
   Future<String> playbackUrl(String recordingId) async {
