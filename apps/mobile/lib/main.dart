@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../packages/tokens/app_tokens.dart';
+import 'core/app_tokens.dart';
 
 final _router = GoRouter(
   initialLocation: '/',
