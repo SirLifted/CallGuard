@@ -1,0 +1,51 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tokens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 - <<'EOF'
+          import json, re, sys
+          t = json.load(open('design/tokens.json'))
+          assert t['version'], 'tokens.json needs a version'
+          hexes = set(re.findall(r'#[0-9A-Fa-f]{6}', open('packages/tokens/app_tokens.dart').read()))
+          print('token colors ok:', sorted(hexes))
+          EOF
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter analyze
+        working-directory: apps/mobile
+
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+      - run: deno check services/api/functions/consent-ticket/index.ts services/api/functions/blocks/index.ts services/api/functions/user-search/index.ts
+
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          for f in services/api/migrations/*.sql; do
+            echo "Applying $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -f "$f"
+          done
