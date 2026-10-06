@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS abuse_reports (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_at TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS ON abuse_reports (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_status_created ON abuse_reports (status, created_at);
 
 -- Lock-change log: every per-video key version lives in Vault; this table says when it changed.
 -- Rotation job (monthly): new KEK version in Vault, re-wrap DEKs, insert row. Old KEK kept read-only
