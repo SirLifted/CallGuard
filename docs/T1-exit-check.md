@@ -6,4 +6,4 @@
 - [x] Flutter 3.47.6 installed (`flutter --version` passes, Dart 3.13.5)
 - [x] `flutter doctor`: Flutter/Windows/Chrome/device/network OK; Android needs cmdline-tools + licenses; VS Build Tools missing (only needed for Windows desktop builds, not Android/iOS)
 - [x] `flutter analyze` on apps/mobile passes (fixed cross-package import via `lib/core/app_tokens.dart`; workspace wiring deferred to Stage B)
-- [ ] `flutter doctor --android-licenses` (needs interactive `y` + cmdline-tools via Android Studio)
+- [x] `flutter doctor --android-licenses` accepted via cmdline-tools (`Sdk\cmdline-tools\latest`, sdkmanager). `flutter doctor`: Flutter/Windows/Android/Chrome/device/network OK. Visual Studio missing — explicitly out of scope (Windows-desktop builds only; targets are Android/iOS).
