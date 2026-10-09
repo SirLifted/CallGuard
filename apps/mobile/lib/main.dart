@@ -43,7 +43,7 @@ class HomeStub extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(color: AppTokens.recordingAlert, borderRadius: BorderRadius.circular(AppTokens.radiusMd)),
-            child: Text('● ${AppTokens.recordingLabel} 00:00', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text('● ${AppTokens.recordingLabel} 00:00', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
@@ -81,7 +81,12 @@ class CallStub extends ConsumerWidget {
             _tog('Spk', call.speakerOn, svc.toggleSpeaker),
           ]),
           TextButton(onPressed: svc.switchCamera, child: const Text('Switch camera')),
-          TextButton(onPressed: () => svc.leave().then((_) => context.go('/')), child: const Text('Leave')),
+          TextButton(
+              onPressed: () async {
+                await svc.leave();
+                if (context.mounted) context.go('/');
+              },
+              child: const Text('Leave')),
         ]),
       ),
     );
