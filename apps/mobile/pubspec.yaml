@@ -13,9 +13,9 @@ dependencies:
   go_router: ^13.0.0
   supabase_flutter: ^2.5.0
   livekit_client: ^2.0.0
-  # firebase_messaging removed: its Windows C++ SDK breaks `flutter build windows`
-  # (CMake <3.5 removed). Push arrives in Stage F env via FCM/APNs natively, not this plugin.
-  permission_handler: ^11.0.0
+  # firebase_messaging + permission_handler removed: their Windows native code
+  # breaks `flutter build windows` on modern MSVC (CMake<3.5, experimental/coroutine).
+  # Both arrive with Stage F native work; neither is called anywhere yet.
 
 dev_dependencies:
   flutter_test:
