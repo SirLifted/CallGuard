@@ -49,3 +49,16 @@ jobs:
             echo "Applying $f"
             PGPASSWORD=postgres psql -h localhost -U postgres -f "$f"
           done
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter build windows --release
+        working-directory: apps/mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: callguard-windows
+          path: apps/mobile/build/windows/x64/runner/Release
