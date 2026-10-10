@@ -1,22 +1,24 @@
-// T1 app shell: opens Home, proves tokens + router work. No real call yet.
+// App shell + router. UI tour is DEMO data until the backend wiring lands (Stages B–F tasks).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'core/app_tokens.dart';
-import 'calls/call_service.dart';
 
-final _router = GoRouter(
-  initialLocation: '/',
-  routes: [
-    GoRoute(path: '/', builder: (c, s) => const HomeStub()),
-    GoRoute(path: '/call/:id', builder: (c, s) => CallStub(callId: s.pathParameters['id']!)),
-  ],
-);
+import 'auth/auth_controller.dart';
+import 'core/app_tokens.dart';
+import 'screens/auth/register_screen.dart';
+import 'screens/auth/otp_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/search_screen.dart';
+import 'screens/call_screen.dart';
+import 'screens/recording_details_screen.dart';
+import 'screens/settings_screens.dart';
 
 void main() => runApp(const ProviderScope(child: CallGuardApp()));
 
 class CallGuardApp extends StatelessWidget {
   const CallGuardApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
@@ -26,76 +28,39 @@ class CallGuardApp extends StatelessWidget {
         colorSchemeSeed: AppTokens.primary,
         scaffoldBackgroundColor: AppTokens.background,
       ),
-      routerConfig: _router,
+      routerConfig: _router(),
     );
   }
 }
 
-class HomeStub extends StatelessWidget {
-  const HomeStub({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('CallGuard (T1 shell)')),
-      body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Recording pill proves the never-color-only rule from T0.
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: AppTokens.recordingAlert, borderRadius: BorderRadius.circular(AppTokens.radiusMd)),
-            child: const Text('● ${AppTokens.recordingLabel} 00:00', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => context.go('/call/demo'),
-            child: const Text('Open call stub'),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-class CallStub extends ConsumerWidget {
-  final String callId;
-  const CallStub({super.key, required this.callId});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final call = ref.watch(callServiceProvider);
-    final svc = ref.read(callServiceProvider.notifier);
-    return Scaffold(
-      appBar: AppBar(title: Text('Call $callId')),
-      body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Status: ${call.status.name}${call.note.isEmpty ? '' : ' — ${call.note}'}'),
-          const SizedBox(height: 12),
-          // TODO(Stage C env): join with real url+token from POST /calls, after mic/cam permission explainer.
-          ElevatedButton(
-            onPressed: call.status == CallStatus.inCall ? null : () => svc.join(url: 'wss://livekit.example', token: 'TODO'),
-            child: const Text('Join (needs server token)'),
-          ),
-          const SizedBox(height: 8),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _tog('Mic', call.micOn, svc.toggleMic),
-            _tog('Cam', call.cameraOn, svc.toggleCamera),
-            _tog('Spk', call.speakerOn, svc.toggleSpeaker),
-          ]),
-          TextButton(onPressed: svc.switchCamera, child: const Text('Switch camera')),
-          TextButton(
-              onPressed: () async {
-                await svc.leave();
-                if (context.mounted) context.go('/');
-              },
-              child: const Text('Leave')),
-        ]),
-      ),
-    );
-  }
-
-  Widget _tog(String label, bool on, VoidCallback fn) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: ElevatedButton(onPressed: fn, child: Text('$label ${on ? 'on' : 'off'}')),
-    );
-  }
+GoRouter _router() {
+  return GoRouter(
+    initialLocation: '/',
+    redirect: (context, state) {
+      final box = ProviderScope.containerOf(context, listen: false);
+      final auth = box.read(authProvider);
+      final onAuth = state.matchedLocation.startsWith('/auth');
+      if (!auth.loggedIn && !onAuth) return auth.otpSent ? '/auth/otp' : '/auth';
+      if (auth.loggedIn && onAuth) return '/';
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/auth', builder: (_, __) => const RegisterScreen()),
+      GoRoute(path: '/auth/otp', builder: (_, __) => const OtpScreen()),
+      GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
+      GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
+      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/call/:id', builder: (_, s) => CallScreen(callId: s.pathParameters['id']!)),
+      GoRoute(path: '/history/:id', builder: (_, s) => RecordingDetailsScreen(recordingId: s.pathParameters['id']!)),
+      GoRoute(path: '/settings', builder: (_, __) => const SettingsHubScreen()),
+      GoRoute(path: '/settings/privacy', builder: (_, __) => const PrivacySettingsScreen()),
+      GoRoute(path: '/settings/notifications', builder: (_, __) => const NotificationSettingsScreen()),
+      GoRoute(path: '/settings/security', builder: (_, __) => const SecuritySettingsScreen()),
+      GoRoute(path: '/settings/blocked', builder: (_, __) => const BlockedUsersScreen()),
+      GoRoute(path: '/settings/report', builder: (_, __) => const ReportUserScreen()),
+      GoRoute(path: '/settings/account', builder: (_, __) => const AccountSettingsScreen()),
+      GoRoute(path: '/help', builder: (_, __) => const HelpScreen()),
+      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+    ],
+  );
 }
