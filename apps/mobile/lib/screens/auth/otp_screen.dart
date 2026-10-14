@@ -70,6 +70,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
             }),
           ),
           const SizedBox(height: 24),
+          if (ref.watch(authProvider).error.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(ref.watch(authProvider).error,
+                  style: const TextStyle(color: AppTokens.error, fontSize: 13)),
+            ),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import 'auth/auth_controller.dart';
 import 'core/app_tokens.dart';
+import 'core/supabase_config.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/otp_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -14,7 +15,13 @@ import 'screens/call_screen.dart';
 import 'screens/recording_details_screen.dart';
 import 'screens/settings_screens.dart';
 
-void main() => runApp(const ProviderScope(child: CallGuardApp()));
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey);
+  runApp(const ProviderScope(child: CallGuardApp()));
+}
 
 class CallGuardApp extends StatelessWidget {
   const CallGuardApp({super.key});
