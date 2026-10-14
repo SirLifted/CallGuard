@@ -1,0 +1,23 @@
+# LiveKit server config — Oracle box (eu-amsterdam-1, 84.235.178.180)
+# Replaces the old --dev only compose. Keys/TURN are real, so phones behind NAT can connect.
+port: 7880
+bind_addresses:
+  - ""
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  # Explicit IP + no STUN lookup: this box's DNS can't reach Google's STUN servers.
+  node_ip: 84.235.178.180
+  use_external_ip: false
+# Dev key pair (replace with Vault-managed keys in prod).
+keys:
+  devkey: devsecretdevsecretdevsecretdevsecret
+# Embedded TURN: required for phones on mobile data (NAT traversal).
+turn:
+  enabled: true
+  udp_port: 3478
+  domain: 84.235.178.180
+logging:
+  level: info
+  json: false
