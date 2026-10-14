@@ -21,10 +21,17 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   int _minutes = 10;
   String _quality = '720p';
   final _purposeCtrl = TextEditingController(text: 'Meeting notes');
+  // DEV defaults: our own LiveKit box. Real flow mints these server-side.
+  final _urlCtrl = TextEditingController(text: 'ws://84.235.178.180:7880');
+  final _roomCtrl = TextEditingController(text: 'test123');
+  final _tokenCtrl = TextEditingController();
 
   @override
   void dispose() {
     _purposeCtrl.dispose();
+    _urlCtrl.dispose();
+    _roomCtrl.dispose();
+    _tokenCtrl.dispose();
     super.dispose();
   }
 
@@ -75,6 +82,45 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('DEV JOIN — paste a LiveKit token (URL prefilled)',
+                            style: TextStyle(fontSize: 12, color: AppTokens.secondary)),
+                      ),
+                      TextField(
+                        controller: _urlCtrl,
+                        decoration: const InputDecoration(labelText: 'Server URL', border: OutlineInputBorder()),
+                      ),
+                      TextField(
+                        controller: _roomCtrl,
+                        decoration: const InputDecoration(labelText: 'Room', border: OutlineInputBorder()),
+                      ),
+                      TextField(
+                        controller: _tokenCtrl,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: const InputDecoration(labelText: 'Token', border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => callSvc.join(url: _urlCtrl.text.trim(), token: _tokenCtrl.text.trim()),
+                            child: const Text('Join room'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                              onPressed: () => setState(() => _phase = RecordingPhase.none), child: const Text('Cancel')),
+                        ),
+                      ]),
+                      const Divider(height: 32),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('RECORDING REQUEST (demo dialog)',
+                            style: TextStyle(fontSize: 12, color: AppTokens.secondary)),
+                      ),
                       TextField(
                         controller: _purposeCtrl,
                         decoration: const InputDecoration(labelText: 'Purpose', border: OutlineInputBorder()),
@@ -100,19 +146,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         onChanged: (v) => setState(() => _quality = v ?? '720p'),
                       ),
                       const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => setState(() => _phase = RecordingPhase.review),
-                            child: const Text('Ask to record'),
-                          ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => setState(() => _phase = RecordingPhase.review),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTokens.primary),
+                          child: const Text('Ask to record'),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                              onPressed: () => setState(() => _phase = RecordingPhase.none), child: const Text('Cancel')),
-                        ),
-                      ]),
+                      ),
                     ]),
                   ),
                 ),
