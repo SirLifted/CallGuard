@@ -101,12 +101,15 @@ jobs:
         working-directory: apps/mobile
       - name: Publish build/web to netlify-publish branch
         run: |
+          # Copy the build out to /tmp BEFORE cleaning the worktree (build lives in apps/mobile/build).
+          rm -rf /tmp/pwa && mkdir -p /tmp/pwa
+          cp -r apps/mobile/build/web/. /tmp/pwa/
           git config user.name "callguard-ci"
           git config user.email "ci@users.noreply.github.com"
           git checkout --orphan netlify-publish
           git rm -rf --cached . >/dev/null 2>&1 || true
-          find . -maxdepth 1 -mindepth 1 -not -name build -not -name .git -exec rm -rf {} +
-          cp -r apps/mobile/build/web/* .
+          find . -maxdepth 1 -mindepth 1 -not -name .git -exec rm -rf {} +
+          cp -r /tmp/pwa/. .
           git add -A
           git commit -m "web pwa build $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push -f origin netlify-publish
