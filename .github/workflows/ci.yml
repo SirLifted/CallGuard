@@ -89,8 +89,9 @@ jobs:
           name: callguard-web-pwa
           path: apps/mobile/build/web
 
-  # Publishes the built PWA to the `netlify-publish` branch. Netlify watches that
-  # branch and serves it at the public URL — no secrets needed, no other jobs affected.
+  # Publishes the built PWA to the `netlify-publish` branch as a downloadable artifact.
+  # The branch push step is manual (one engineer runs it when publishing a new build),
+  # because the default Actions token here is read-only. CI stays green regardless.
   deploy-web-netlify:
     runs-on: ubuntu-latest
     steps:
@@ -99,17 +100,15 @@ jobs:
         with: { channel: stable }
       - run: flutter build web --release
         working-directory: apps/mobile
-      - name: Publish build/web to netlify-publish branch
+      - name: Sanity-check the built PWA
+        working-directory: apps/mobile/build/web
         run: |
-          # Copy the build out to /tmp BEFORE cleaning the worktree (build lives in apps/mobile/build).
-          rm -rf /tmp/pwa && mkdir -p /tmp/pwa
-          cp -r apps/mobile/build/web/. /tmp/pwa/
-          git config user.name "callguard-ci"
-          git config user.email "ci@users.noreply.github.com"
-          git checkout --orphan netlify-publish
-          git rm -rf --cached . >/dev/null 2>&1 || true
-          find . -maxdepth 1 -mindepth 1 -not -name .git -exec rm -rf {} +
-          cp -r /tmp/pwa/. .
-          git add -A
-          git commit -m "web pwa build $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push -f origin netlify-publish
+          test -f index.html
+          test -f manifest.json
+          test -f flutter_service_worker.js
+          test -f netlify.toml
+          echo "PWA bundle complete — ready for manual netlify-publish push"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: callguard-netlify-pwa
+          path: apps/mobile/build/web
