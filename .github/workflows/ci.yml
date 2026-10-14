@@ -75,3 +75,38 @@ jobs:
         with:
           name: callguard-android-apk
           path: apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter build web --release
+        working-directory: apps/mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: callguard-web-pwa
+          path: apps/mobile/build/web
+
+  # Publishes the built PWA to the `netlify-publish` branch. Netlify watches that
+  # branch and serves it at the public URL — no secrets needed, no other jobs affected.
+  deploy-web-netlify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter build web --release
+        working-directory: apps/mobile
+      - name: Publish build/web to netlify-publish branch
+        run: |
+          git config user.name "callguard-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan netlify-publish
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          find . -maxdepth 1 -mindepth 1 -not -name build -not -name .git -exec rm -rf {} +
+          cp -r apps/mobile/build/web/* .
+          git add -A
+          git commit -m "web pwa build $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -f origin netlify-publish
