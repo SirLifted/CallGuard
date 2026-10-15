@@ -21,8 +21,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   int _minutes = 10;
   String _quality = '720p';
   final _purposeCtrl = TextEditingController(text: 'Meeting notes');
-  // DEV defaults: our own LiveKit box. Real flow mints these server-side.
-  final _urlCtrl = TextEditingController(text: 'ws://84.235.178.180:7880');
+  // DEV defaults: LiveKit Cloud project. Real flow mints these server-side.
+  final _urlCtrl = TextEditingController(text: 'wss://callguard-4itf8l4t.livekit.cloud');
   final _roomCtrl = TextEditingController(text: 'test123');
   final _tokenCtrl = TextEditingController();
 

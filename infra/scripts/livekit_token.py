@@ -12,10 +12,13 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 
-API_KEY = 'devkey'
-API_SECRET = 'devsecretdevsecretdevsecretdevsecret'
+# Dev defaults match infra/livekit.yaml (self-hosted box). Override with env for Cloud:
+#   LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
+API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecretdevsecretdevsecretdevsecret')
 
 
 def b64url(raw: bytes) -> str:
