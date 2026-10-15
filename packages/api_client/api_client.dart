@@ -22,14 +22,18 @@ class ApiClient {
         headers: await _headers(), body: jsonEncode({'purpose': purpose, 'duration_sec': durationSec, 'quality': quality}));
   }
 
-  Future<void> approveRequest(String requestId) async {
-    // Server returns the 5-min recording ticket (JWT). App never creates it.
-    await http.post(Uri.parse('$baseUrl/recording-requests/$requestId/approve'), headers: await _headers());
+  Future<Map<String, dynamic>> approveRequest(String requestId, {String roomName = 'test123'}) async {
+    // Server signs the 5-min ticket, stores revocable jti, STARTS the server-side save.
+    // App never creates tickets. Returns {recording_auth_jwt, jti, expires_in_sec, egress_id}.
+    final r = await http.post(Uri.parse('$baseUrl/recording-requests/$requestId/approve'),
+        headers: await _headers(), body: jsonEncode({'room_name': roomName}));
+    return (jsonDecode(r.body) as Map).cast<String, dynamic>();
   }
 
-  Future<void> withdraw(String recordingId) async {
+  Future<void> withdraw(String recordingId, {String? egressId, String? jti}) async {
     // Server revokes ticket + tells relay to stop within 2s.
-    await http.post(Uri.parse('$baseUrl/recordings/$recordingId/withdraw'), headers: await _headers());
+    await http.post(Uri.parse('$baseUrl/recordings/$recordingId/withdraw'),
+        headers: await _headers(), body: jsonEncode({'egress_id': egressId, 'jti': jti}));
   }
 
   Future<void> requestExtension(String recordingId, int extraSec) async {
