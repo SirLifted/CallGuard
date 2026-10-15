@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../api/api_client_provider.dart';
+import '../../calls/pending_call.dart';
+import '../../contacts/favorites_service.dart';
 import '../../core/app_tokens.dart';
 import '../../data/demo_data.dart';
 
@@ -42,21 +46,75 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _CallsTab extends StatelessWidget {
+class _CallsTab extends ConsumerStatefulWidget {
   const _CallsTab();
   @override
+  ConsumerState<_CallsTab> createState() => _CallsTabState();
+}
+
+class _CallsTabState extends ConsumerState<_CallsTab> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.read(favoritesProvider.notifier).refresh());
+  }
+
+  Future<void> _call(String favUserId, String label) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final res = await ref.read(apiClientProvider).createCall(favUserId);
+      ref.read(pendingCallProvider.notifier).state = PendingCall(
+        url: res['livekit_url'] as String,
+        token: res['caller_token'] as String,
+        callId: res['call_id'] as String,
+      );
+      if (!mounted) return;
+      Navigator.pushNamed(context, '/call/${res['call_id']}');
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not call $label — Retry')));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      itemCount: demoContacts.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (_, i) => ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.person)),
-        title: Text(demoContacts[i].name),
-        subtitle: const Text('Last call: yesterday'),
-        trailing: IconButton(
-          onPressed: () => Navigator.pushReplacementNamed(context, '/call/demo'),
-          icon: const Icon(Icons.video_call, color: AppTokens.primary),
-        ),
+    final favs = ref.watch(favoritesProvider);
+    return RefreshIndicator(
+      onRefresh: () => ref.read(favoritesProvider.notifier).refresh(),
+      child: ListView(
+        children: [
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.dialpad)),
+            title: const Text('Dial a number or email'),
+            subtitle: const Text('Works for unsaved people too'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pushNamed(context, '/dial'),
+          ),
+          const Divider(height: 1),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('Saved contacts', style: TextStyle(fontSize: 12, color: AppTokens.secondary)),
+          ),
+          if (favs.loading && favs.items.isEmpty)
+            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+          else if (favs.items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No saved contacts yet — find someone in Search and tap ☆',
+                  style: TextStyle(color: AppTokens.secondary)),
+            )
+          else
+            for (final f in favs.items)
+              ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.person)),
+                title: Text((f['display_name'] as String?)?.isNotEmpty == true
+                    ? f['display_name'] as String
+                    : 'CallGuard user'),
+                trailing: IconButton(
+                  onPressed: () => _call(f['id'] as String, 'contact'),
+                  icon: const Icon(Icons.video_call, color: AppTokens.primary),
+                ),
+              ),
+        ],
       ),
     );
   }

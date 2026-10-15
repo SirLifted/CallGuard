@@ -47,6 +47,23 @@ class ApiClient {
     await http.post(Uri.parse('$baseUrl/extension-requests/$extensionId/approve'), headers: await _headers());
   }
 
+  Future<List<Map<String, dynamic>>> searchPeople(String q) async {
+    // Directory lookup: registered users only. Strangers all look like "Not found".
+    final r = await http.get(Uri.parse('$baseUrl/users/search?q=${Uri.encodeComponent(q)}'),
+        headers: await _headers());
+    if (r.statusCode != 200) return [];
+    final body = jsonDecode(r.body);
+    final list = (body is List) ? body : (body['results'] as List? ?? []);
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> createCall(String calleeId) async {
+    // Referee opens a relay room and mints our entry ticket. Returns {call_id, livekit_url, caller_token}.
+    final r = await http.post(Uri.parse('$baseUrl/calls'),
+        headers: await _headers(), body: jsonEncode({'callee_id': calleeId}));
+    return (jsonDecode(r.body) as Map).cast<String, dynamic>();
+  }
+
   Future<List<Map<String, dynamic>>> listRecordings() async {
     // History page. Server only returns rows the viewer may see, newest first.
     final r = await http.get(Uri.parse('$baseUrl/recordings'), headers: await _headers());

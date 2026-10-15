@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/api_client_provider.dart';
-import '../../core/app_tokens.dart';
 import '../../calls/call_service.dart';
+import '../../calls/pending_call.dart';
+import '../../core/app_tokens.dart';
 import '../../recording/recording_service.dart';
 import '../../widgets/cg_dialogs.dart';
 import '../../widgets/cg_widgets.dart';
@@ -53,6 +54,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     final call = ref.watch(callServiceProvider);
     final callSvc = ref.read(callServiceProvider.notifier);
     final recSvc = ref.read(recordingServiceProvider.notifier);
+
+    // Server-opened call (Search/Dial/Favorites): join once with its ticket, then clear it.
+    ref.listen<PendingCall?>(pendingCallProvider, (_, next) {
+      if (next != null && ref.read(callServiceProvider).status == CallStatus.idle) {
+        callSvc.join(url: next.url, token: next.token);
+        ref.read(pendingCallProvider.notifier).state = null;
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(title: Text('Call ${widget.callId}')),

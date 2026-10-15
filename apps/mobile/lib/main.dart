@@ -12,6 +12,7 @@ import 'screens/profile_setup_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/dial_screen.dart';
 import 'screens/call_screen.dart';
 import 'screens/recording_details_screen.dart';
 import 'screens/settings_screens.dart';
@@ -77,6 +78,7 @@ GoRouter _router() {
       GoRoute(path: '/profile/setup', builder: (_, __) => const ProfileSetupScreen()),
       GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
+      GoRoute(path: '/dial', builder: (_, __) => const DialScreen()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/call/:id', builder: (_, s) => CallScreen(callId: s.pathParameters['id']!)),
       GoRoute(path: '/history/:id', builder: (_, s) => RecordingDetailsScreen(recordingId: s.pathParameters['id']!)),
