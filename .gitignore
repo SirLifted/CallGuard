@@ -34,3 +34,6 @@ GoogleService-Info.plist
 *.mov
 *.webm
 recordings/
+
+# Supabase CLI deploy copy (source of truth is services/api/functions)
+/supabase/

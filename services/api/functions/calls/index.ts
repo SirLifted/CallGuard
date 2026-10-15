@@ -1,22 +1,44 @@
-// Edge Function: create call + mint LiveKit room token.
-// Plain language: the referee opens a relay room and hands each phone a ticket to enter.
-// Recording tickets are separate (consent-ticket) — this one only lets you talk.
+// Calls: open a relay room + mint each phone's entry ticket. Auth is real (Auth API check).
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
+import { SignJWT } from 'https://deno.land/x/jose@v5.2.4/index.ts';
+
+async function authedUserId(req: Request): Promise<string | null> {
+  const tok = (req.headers.get('Authorization') ?? '').replace('Bearer ', '');
+  if (!tok) return null;
+  const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/user`, {
+    headers: { apikey: Deno.env.get('SUPABASE_ANON_KEY')!, Authorization: `Bearer ${tok}` },
+  });
+  if (!r.ok) return null;
+  const u = await r.json();
+  return u?.id ?? null;
+}
 
 serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  const me = await authedUserId(req);
+  if (!me) return Response.json({ error: 'Not found' }, { status: 404 });
   const { callee_id } = await req.json();
-  const callerId = req.headers.get('x-user-id'); // TODO: derive from verified JWT
-  if (!callerId || !callee_id) return Response.json({ error: 'Invalid call' }, { status: 400 });
+  if (!callee_id || callee_id === me) return Response.json({ error: 'Not found' }, { status: 404 });
 
-  // TODO: is_blocked(caller, callee) → identical 404; INSERT calls + call_participants;
-  // mint LiveKit AccessToken (room `call_<uuid>`, ttl 2h) via LIVEKIT_API_KEY/SECRET;
-  // send FCM high-priority (Android full-screen intent) + APNs PushKit (iOS CallKit).
-  const callId = 'stub-call-id';
+  // TODO(env): is_blocked(me, callee) → identical 404; INSERT calls + participants rows.
+  const callId = crypto.randomUUID();
+  const room = `call_${callId.replaceAll('-', '')}`;
+  const key = Deno.env.get('LIVEKIT_API_KEY')!;
+  const secret = Deno.env.get('LIVEKIT_API_SECRET')!;
+  const grants = { roomJoin: true, canPublish: true, canSubscribe: true };
+  const mint = (identity: string) =>
+    new SignJWT({ video: { room, ...grants } })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuer(key)
+      .setSubject(identity)
+      .setIssuedAt()
+      .setExpirationTime('2h')
+      .sign(new TextEncoder().encode(secret));
+
   return Response.json({
     call_id: callId,
-    livekit_url: 'wss://livekit.example',
-    token: 'stub — mint via LiveKit AccessToken in Stage C env',
-    note: 'callee gets push with same call_id',
+    livekit_url: Deno.env.get('LIVEKIT_URL'),
+    caller_token: await mint(me),
+    // TODO(env): push callee via notify (their token minted on accept), in-app pull covers the test.
   });
 });

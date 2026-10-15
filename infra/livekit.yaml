@@ -21,3 +21,13 @@ turn:
 logging:
   level: info
   json: false
+# Recording egress (server-side save). S3 block holds R2 credentials — these live
+# ONLY on the server (/opt/callguard/livekit.yaml), never in git. This file keeps
+# placeholders; deploy script injects real values over SSH.
+# egress:
+#   s3:
+#     access_key: R2_ACCESS_KEY_ID
+#     secret: R2_SECRET_ACCESS_KEY
+#     region: auto
+#     endpoint: https://ACCOUNTID.r2.cloudflarestorage.com
+#     bucket: callguard-recordings-dev
