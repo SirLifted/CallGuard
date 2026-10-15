@@ -40,15 +40,27 @@ class CallGuardApp extends StatelessWidget {
   }
 }
 
+// Where to land right after login (email links point here via AppLinks.postLoginCallUrl).
+final postLoginTargetProvider = StateProvider<String>((_) => '/');
+
 GoRouter _router() {
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
       final box = ProviderScope.containerOf(context, listen: false);
       final auth = box.read(authProvider);
-      final onAuth = state.matchedLocation.startsWith('/auth');
-      if (!auth.loggedIn && !onAuth) return auth.otpSent ? '/auth/otp' : '/auth';
-      if (auth.loggedIn && onAuth) return '/';
+      final loc = state.matchedLocation;
+      final onAuth = loc.startsWith('/auth');
+      if (!auth.loggedIn && !onAuth) {
+        // Remember where the link pointed so login drops the user straight there.
+        box.read(postLoginTargetProvider.notifier).state = loc;
+        return auth.otpSent ? '/auth/otp' : '/auth';
+      }
+      if (auth.loggedIn && onAuth) {
+        final next = box.read(postLoginTargetProvider);
+        box.read(postLoginTargetProvider.notifier).state = '/';
+        return next;
+      }
       return null;
     },
     routes: [

@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/app_links.dart';
 
 class AuthState {
   final String email;
@@ -55,7 +56,12 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> sendOtp() async {
     state = state.copyWith(sending: true, error: '');
     try {
-      await Supabase.instance.client.auth.signInWithOtp(email: state.email);
+      // emailRedirectTo: the link in the email lands straight on the call screen.
+      // Must be allow-listed in Supabase → Auth → URL Configuration → Redirect URLs.
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: state.email,
+        emailRedirectTo: AppLinks.postLoginCallUrl,
+      );
       state = state.copyWith(otpSent: true, sending: false);
     } catch (e) {
       state = state.copyWith(sending: false, error: 'Could not send code — check connection and retry');
