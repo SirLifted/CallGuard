@@ -48,6 +48,17 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
         child: Column(children: [
           Text('We sent a 6-digit code to ${auth.email}',
               style: const TextStyle(fontSize: 14)),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTokens.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('Code sent — check your inbox and spam folder.',
+                style: TextStyle(fontSize: 13)),
+          ),
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -79,13 +90,26 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: code.length == 6 ? () => ctrl.confirmOtp(code) : null,
+              onPressed: (code.length == 6 && !ref.watch(authProvider).verifying)
+                  ? () => ctrl.confirmOtp(code)
+                  : null,
               style: ElevatedButton.styleFrom(backgroundColor: AppTokens.primary),
-              child: const Text('Verify'),
+              child: ref.watch(authProvider).verifying
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Verify'),
             ),
           ),
           TextButton(
-            onPressed: _seconds == 0 ? ctrl.sendOtp : null,
+            onPressed: _seconds == 0
+                ? () {
+                    final messenger = ScaffoldMessenger.of(context);
+                    ctrl.sendOtp().then((_) => messenger.showSnackBar(
+                        const SnackBar(content: Text('New code sent — check inbox and spam'))));
+                  }
+                : null,
             child: Text(_seconds == 0 ? 'Resend code' : 'Resend in $_seconds'),
           ),
         ]),

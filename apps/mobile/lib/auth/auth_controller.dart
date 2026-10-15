@@ -8,13 +8,24 @@ class AuthState {
   final String email;
   final bool loggedIn;
   final bool otpSent;
+  final bool sending;
+  final bool verifying;
   final String error;
-  const AuthState({this.email = '', this.loggedIn = false, this.otpSent = false, this.error = ''});
+  const AuthState(
+      {this.email = '',
+      this.loggedIn = false,
+      this.otpSent = false,
+      this.sending = false,
+      this.verifying = false,
+      this.error = ''});
 
-  AuthState copyWith({String? email, bool? loggedIn, bool? otpSent, String? error}) => AuthState(
+  AuthState copyWith({String? email, bool? loggedIn, bool? otpSent, bool? sending, bool? verifying, String? error}) =>
+      AuthState(
         email: email ?? this.email,
         loggedIn: loggedIn ?? this.loggedIn,
         otpSent: otpSent ?? this.otpSent,
+        sending: sending ?? this.sending,
+        verifying: verifying ?? this.verifying,
         error: error ?? this.error,
       );
 }
@@ -42,18 +53,18 @@ class AuthController extends StateNotifier<AuthState> {
       state = state.copyWith(email: v.trim().toLowerCase(), error: '');
 
   Future<void> sendOtp() async {
-    state = state.copyWith(error: '');
+    state = state.copyWith(sending: true, error: '');
     try {
       await Supabase.instance.client.auth.signInWithOtp(email: state.email);
-      state = state.copyWith(otpSent: true);
+      state = state.copyWith(otpSent: true, sending: false);
     } catch (e) {
-      state = state.copyWith(error: 'Could not send code — check connection and retry');
+      state = state.copyWith(sending: false, error: 'Could not send code — check connection and retry');
     }
   }
 
   Future<void> confirmOtp(String code) async {
     if (code.length != 6) return;
-    state = state.copyWith(error: '');
+    state = state.copyWith(verifying: true, error: '');
     try {
       final res = await Supabase.instance.client.auth.verifyOTP(
         type: OtpType.email,
@@ -61,12 +72,12 @@ class AuthController extends StateNotifier<AuthState> {
         token: code,
       );
       if (res.session != null) {
-        state = state.copyWith(loggedIn: true, otpSent: false);
+        state = state.copyWith(loggedIn: true, otpSent: false, verifying: false);
       } else {
-        state = state.copyWith(error: 'Wrong code — try again');
+        state = state.copyWith(verifying: false, error: 'Wrong code — try again');
       }
     } catch (_) {
-      state = state.copyWith(error: 'Wrong code — try again');
+      state = state.copyWith(verifying: false, error: 'Wrong code — try again');
     }
   }
 

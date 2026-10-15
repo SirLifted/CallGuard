@@ -33,9 +33,14 @@ class RegisterScreen extends ConsumerWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: emailOk ? ctrl.sendOtp : null,
+              onPressed: (emailOk && !auth.sending) ? ctrl.sendOtp : null,
               style: ElevatedButton.styleFrom(backgroundColor: AppTokens.primary),
-              child: const Text('Send code'),
+              child: auth.sending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Send code'),
             ),
           ),
           const SizedBox(height: 8),
