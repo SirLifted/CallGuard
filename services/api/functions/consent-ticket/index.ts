@@ -61,16 +61,27 @@ serve(async (req) => {
     headers: { Authorization: `Bearer ${uptok}` },
   });
 
-  // START the server-side save (room composite → R2 via server egress.s3 config).
-  // TODO(env): room_name comes from the request row; filepath uses recording id.
+  // START the server-side save (room composite → R2, credentials explicit per request
+  // so no server-side S3 config is needed on LiveKit Cloud).
+  const body = await req.json().catch(() => ({}));
+  const roomName = body.room_name ?? 'test123';
   const liveUrl = Deno.env.get('LIVEKIT_URL')!.replace('ws://', 'http://').replace('wss://', 'https://');
   const egress = await fetch(`${liveUrl}/twirp/livekit.Egress/StartRoomCompositeEgress`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await livekitServerJwt()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await livekitServerJwt(roomName)}` },
     body: JSON.stringify({
-      room_name: 'test123',
+      room_name: roomName,
       layout: 'grid',
-      output: { file: { filepath: `callguard/${requestId}.mp4` }, s3: {} },
+      output: {
+        file: { filepath: `callguard/${requestId}.mp4` },
+        s3: {
+          access_key: Deno.env.get('R2_ACCESS_KEY_ID'),
+          secret: Deno.env.get('R2_SECRET_ACCESS_KEY'),
+          region: 'auto',
+          endpoint: Deno.env.get('R2_ENDPOINT'),
+          bucket: Deno.env.get('R2_BUCKET'),
+        },
+      },
     }),
   });
   const eg = await egress.json().catch(() => ({}));

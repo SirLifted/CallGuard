@@ -22,8 +22,9 @@ serve(async (req) => {
 
   // TODO(env): load recording FOR UPDATE; me must be requester/participant;
   // STARTED → CONSENT_WITHDRAWN (+ stopped_at), write audit row. Read jti + egress_id.
-  const jti = 'stub-jti-from-row';
-  const egressId: string | null = null; // TODO(env): from recordings.egress_id
+  const body = await req.json().catch(() => ({}));
+  const jti = body.jti ?? 'stub-jti-from-row';
+  const egressId: string | null = body.egress_id ?? null; // TODO(env): from recordings.egress_id
 
   // 1. Revoke ticket immediately (relay refuses further egress).
   const upstash = Deno.env.get('UPSTASH_REDIS_REST_URL')!;

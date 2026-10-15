@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../api/api_client_provider.dart';
 import '../../core/app_tokens.dart';
 import '../../calls/call_service.dart';
 import '../../recording/recording_service.dart';
@@ -25,6 +26,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   final _urlCtrl = TextEditingController(text: 'wss://callguard-4itf8l4t.livekit.cloud');
   final _roomCtrl = TextEditingController(text: 'test123');
   final _tokenCtrl = TextEditingController();
+  // DEV test plumbing: request id typed by tester, egress id returned by server.
+  final _reqIdCtrl = TextEditingController(text: 'dev-req-1');
+  String? _egressId;
+  String _apiNote = '';
 
   @override
   void dispose() {
@@ -32,6 +37,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     _urlCtrl.dispose();
     _roomCtrl.dispose();
     _tokenCtrl.dispose();
+    _reqIdCtrl.dispose();
     super.dispose();
   }
 
@@ -70,10 +76,38 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         audio: true,
                         video: true);
                     if (!mounted) return;
-                    setState(() => _phase = ok ? RecordingPhase.active : RecordingPhase.none);
-                    if (ok) recSvc.onApproved(durationSec: _minutes * 60, ticketExp: 'server ticket');
+                    if (!ok) {
+                      setState(() => _phase = RecordingPhase.none);
+                      return;
+                    }
+                    // REAL approve: server signs ticket + starts the server-side save.
+                    setState(() {
+                      _phase = RecordingPhase.active;
+                      _apiNote = 'Asking server…';
+                    });
+                    try {
+                      final api = ref.read(apiClientProvider);
+                      final res = await api.approveRequest(
+                          _reqIdCtrl.text.trim().isEmpty ? 'dev-req-1' : _reqIdCtrl.text.trim(),
+                          roomName: _roomCtrl.text.trim().isEmpty ? 'test123' : _roomCtrl.text.trim());
+                      if (!mounted) return;
+                      setState(() {
+                        _egressId = res['egress_id'] as String?;
+                        _apiNote = 'Server saving → egress ${_egressId ?? 'pending'}';
+                      });
+                      recSvc.onApproved(
+                          durationSec: (res['expires_in_sec'] as int?) ?? _minutes * 60,
+                          ticketExp: 'server ticket ${(res['jti'] as String?) ?? ''}');
+                    } catch (e) {
+                      if (!mounted) return;
+                      setState(() {
+                        _phase = RecordingPhase.none;
+                        _apiNote = 'Server refused: $e';
+                      });
+                    }
                   },
                 ),
+              if (_apiNote.isNotEmpty) Text(_apiNote, style: const TextStyle(fontSize: 12, color: AppTokens.secondary)),
               if (_phase == RecordingPhase.active || _phase == RecordingPhase.ending)
                 CgRecordingPill(timeText: _timeText),
 
@@ -146,6 +180,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         onChanged: (v) => setState(() => _quality = v ?? '720p'),
                       ),
                       const SizedBox(height: 12),
+                      TextField(
+                        controller: _reqIdCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Request ID (dev test plumbing)',
+                            border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -181,9 +222,22 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     onPressed: () async {
                       final ok = await cgWithdrawDialog(context);
                       if (!mounted) return;
-                      if (ok) {
+                      if (!ok) return;
+                      // REAL withdraw: server revokes ticket + stops the save ≤2s.
+                      setState(() => _apiNote = 'Stopping save…');
+                      try {
+                        final api = ref.read(apiClientProvider);
+                        final rid = _reqIdCtrl.text.trim().isEmpty ? 'dev-req-1' : _reqIdCtrl.text.trim();
+                        await api.withdraw(rid, egressId: _egressId);
+                        if (!mounted) return;
                         recSvc.onWithdrawn();
-                        setState(() => _phase = RecordingPhase.withdrawn);
+                        setState(() {
+                          _phase = RecordingPhase.withdrawn;
+                          _apiNote = 'Server stopped the save';
+                        });
+                      } catch (e) {
+                        if (!mounted) return;
+                        setState(() => _apiNote = 'Stop failed: $e');
                       }
                     },
                     child: const Text('Withdraw consent'),
